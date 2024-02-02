@@ -33,13 +33,11 @@ pop_weighted_avg <- sapply(temp_vars, function(x) weighted.mean(rep_nomiss[[x]],
 ```
 
 ## 1. a) 
-### Plotting histogram of number of days within each temperature range
+### Plotting histogram as required
 
 ```{r}
-
 labels <- c("<10", "10–20", "20–30", "30–40", "40–50", "50–60", "60–70", "70–80", "80–90", ">90")
 
-# Now, let's plot the histogram
 barplot(pop_weighted_avg, 
         main = "Population-Weighted Average Number of Days in \nEach Temperature Range (1968-2002 average)", 
         ylab = "", 
@@ -48,12 +46,126 @@ barplot(pop_weighted_avg,
         names.arg = labels, 
         las = 2, col = "lightyellow")
 
-# Add lines stretching across the graph from the x-axis
 abline(h = seq(0, max(pop_weighted_avg), by = 10), col = "gray", lty = "dotted")
 ```
-## 1. b)
-### 
+## 1. b) and c)
+### Answering questions as required.
+```{r}
+# Calculating population-weighted average number of days above 90◦ F per year across the US
+pop_weighted_avg_above_90 <- weighted.mean(rep_nomiss$tday_gt90, rep_nomiss$population, na.rm = TRUE)
 
+# Finding county with the highest number of days above 90◦ F per year
+highest_days_above_90 <- rep_nomiss[which.max(rep_nomiss$tday_gt90), "county"]
+highest_days_above_90_count <- max(rep_nomiss$tday_gt90, na.rm = TRUE)
 
+# Calculating the average number of days above 90◦F per year for each county over the sample period (1968-2002)
+avg_days_above_90 <- aggregate(tday_gt90 ~ county, rep_nomiss, mean, na.rm = TRUE)
+
+# Finding number of counties that have, on average over the sample period (1968-2002), experienced zero days above 90◦F per year
+num_counties_zero_days_above_90 <- sum(avg_days_above_90$tday_gt90 == 0)
+
+# Calculating the total number of counties
+total_counties <- length(unique(rep_nomiss$county))
+
+# Calculating the percentage of counties that have, on average over the sample period (1968-2002), experienced zero days above 90◦F per year
+percentage_zero_days_above_90 <- (num_counties_zero_days_above_90 / total_counties) * 100
+
+print(paste("The population-weighted average number of days above 90◦ F per year across the US is", round(pop_weighted_avg_above_90, 2)))
+print(paste("The county with the highest number of days above 90◦ F per year is", highest_days_above_90, "with", round(highest_days_above_90_count, 2), "days"))
+print(paste("The number of counties that have, on average over the sample period (1968-2002), experienced zero days above 90◦F per year is", num_counties_zero_days_above_90, "out of a total of", total_counties, "counties in the dataset, or about", round(percentage_zero_days_above_90, 2), "%"))
+```
+# Question 2
+## 2. a)
+
+```{r}
+print(paste("The national average over-65 mortality rate is", round(mean(rep_nomiss$cruderate, na.rm = TRUE), 2), "deaths per 100,000 population"))
+print(paste("The total number of deaths from 1968-2002 is", sum(rep_nomiss$deaths, na.rm = TRUE)))
+```
+# Question 3
+### Merging given datasets and creating variables as instructed
+```{r}
+# Merging dataframes on 'countycode'
+merged_df <- merge(rep_nomiss, ave_temp, by = "countycode")
+
+# Calculating sum of all days over 70◦ F and 80◦ F for each county
+merged_df$hotdays <- rowSums(merged_df[,grep("tday_70_80|tday_80_90|tday_gt90", names(merged_df))], na.rm = TRUE)
+merged_df$hotterdays <- rowSums(merged_df[,grep("tday_80_90|tday_gt90", names(merged_df))], na.rm = TRUE)
+
+# Calculating  average mortality rate, hotdays, and hotterdays for each county
+avg_by_county <- aggregate(cbind(cruderate, hotdays, hotterdays) ~ countycode, merged_df, mean, na.rm = TRUE)
+
+# Checking first few rows of the new dataframe
+print(head(avg_by_county))
+
+```
+## 3. a)
+### Plotting figure as required
+```{r}
+# Fit a linear regression model
+# Merge the 'ave_temp' dataframe with 'avg_by_county'
+avg_by_county <- merge(avg_by_county, ave_temp, by = "countycode")
+
+# Fit a linear regression model
+model <- lm(cruderate ~ normal_1981_2010, data = avg_by_county)
+
+# Get the slope of the regression line
+slope <- coef(model)[2]
+
+# Plot the figure with the regression line
+ggplot(avg_by_county, aes(x = normal_1981_2010, y = cruderate)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  ggtitle("Relationship between average county temperatures and over-65 mortality rates") +
+  xlab("Average county temperatures (1981-2010)") +
+  ylab("Over 65 Mortality Rates") +
+  annotate("text", x = min(avg_by_county$normal_1981_2010), y = max(avg_by_county$cruderate), label = paste("Slope =", round(slope, 2)), hjust = 0, vjust = 1)
+```
+## 3. b)
+### Plotting graphs as instructed: hot days first, and then hotter days
+```{r}
+model_hotdays <- lm(cruderate ~ hotdays, data = avg_by_county)
+
+slope_hotdays <- coef(model_hotdays)[2]
+
+rsq <- summary(model_hotdays)$r.squared
+
+ggplot(avg_by_county, aes(x = hotdays, y = cruderate)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  ggtitle("Relationship between hot days and over-65 mortality rates") +
+  xlab("Hot Days") +
+  ylab("Over-65 Mortality Rates") +
+  annotate("text", x = min(avg_by_county$hotdays), y = max(avg_by_county$cruderate), label = paste("Slope =", round(slope_hotterdays, 2)), hjust = 0, vjust = 3) +
+  annotate("text", x = min(avg_by_county$hotdays), y = max(avg_by_county$cruderate) - 10, label = paste("R-squared =", round(rsq, 2)), hjust = 0, vjust = 1)
+```
+
+```{r}
+model_hotterdays <- lm(cruderate ~ hotterdays, data = avg_by_county)
+
+slope_hotterdays <- coef(model_hotterdays)[2]
+
+# Calculate R-squared value
+rsq <- summary(model_hotterdays)$r.squared
+
+ggplot(avg_by_county, aes(x = hotterdays, y = cruderate)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  ggtitle("Relationship between hotter days and over-65 mortality rates") +
+  xlab("Hotter Days") +
+  ylab("Over-65 Mortality Rates") +
+  annotate("text", x = min(avg_by_county$hotterdays), y = max(avg_by_county$cruderate), label = paste("Slope =", round(slope_hotterdays, 2)), hjust = 0, vjust = 3) +
+  annotate("text", x = min(avg_by_county$hotterdays), y = max(avg_by_county$cruderate) - 10, label = paste("R-squared =", round(rsq, 2)), hjust = 0, vjust = 1)
+```
+# Question 4
+
+```{r}
+selected_counties <- c("Mobile County, AL", "Cook County, IL", "Los Angeles County, CA", "Miami-Dade County, FL")
+
+# Creating new dataframe with selected counties
+subset <- merged_df[merged_df$county.x %in% selected_counties, ]
+
+# Inspecting subsetted dataframe
+print(head(subset))
+```
 
 
